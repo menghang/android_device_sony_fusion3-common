@@ -26,9 +26,12 @@ busybox mknod -m 666 /dev/null c 1 3
 busybox mount -t proc proc /proc
 busybox mount -t sysfs sysfs /sys
 
+# trigger vibration
+busybox echo 200 > /sys/class/timed_output/vibrator/enable
+
 # trigger amber LED
-busybox echo 255 > ${BOOTREC_LED_RED}
-busybox echo 0 > ${BOOTREC_LED_GREEN}
+busybox echo 0 > ${BOOTREC_LED_RED}
+busybox echo 127 > ${BOOTREC_LED_GREEN}
 busybox echo 255 > ${BOOTREC_LED_BLUE}
 
 # keycheck
@@ -43,15 +46,38 @@ if [ -s /dev/keycheck ] || busybox grep -q warmboot=0x77665502 /proc/cmdline ; t
 	busybox echo 'RECOVERY BOOT' >>boot.txt
 	# orange led for recoveryboot
 	busybox echo 255 > ${BOOTREC_LED_RED}
-	busybox echo 100 > ${BOOTREC_LED_GREEN}
-	busybox echo 0 > ${BOOTREC_LED_BLUE}
+	busybox echo 0 > ${BOOTREC_LED_GREEN}
+	busybox echo 255 > ${BOOTREC_LED_BLUE}
 	# recovery ramdisk
+	# default recovery ramdisk is CWM 
+	load_image=/sbin/ramdisk-recovery-cwm.cpio
+	if [ -s /dev/keycheck ]
+	then
+		busybox hexdump < /dev/keycheck > /dev/keycheck1
+
+		export VOLUKEYCHECK=`busybox cat /dev/keycheck1 | busybox grep '0001 0073'`
+		export VOLDKEYCHECK=`busybox cat /dev/keycheck1 | busybox grep '0001 0072'`
+
+		busybox rm /dev/keycheck
+		busybox rm /dev/keycheck1
+
+		if [ -n "$VOLUKEYCHECK" ]
+		then
+			#load cwm ramdisk		
+			load_image=/sbin/ramdisk-recovery-cwm.cpio
+		fi
+
+		if [ -n "$VOLDKEYCHECK" ]
+		then
+			#load twrp ramdisk
+		   load_image=/sbin/ramdisk-recovery-twrp.cpio
+		fi
+	fi
 	busybox mknod -m 600 ${BOOTREC_FOTA_NODE}
 	busybox mount -o remount,rw /
 	busybox ln -sf /sbin/busybox /sbin/sh
-	extract_elf_ramdisk -i ${BOOTREC_FOTA} -o /sbin/ramdisk-recovery.cpio -t / -c
+	extract_elf_ramdisk -i ${BOOTREC_FOTA} -o ${load_image} -t / -c
 	busybox rm /sbin/sh
-	load_image=/sbin/ramdisk-recovery.cpio
 else
 	busybox echo 'ANDROID BOOT' >>boot.txt
 	# poweroff LED
